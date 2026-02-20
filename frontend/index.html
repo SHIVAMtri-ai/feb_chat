@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Personal Chatbot</title>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(to right, #6a11cb, #2575fc);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        padding: 20px;
+        min-height: 100vh;
+    }
+
+    h2 {
+        margin-bottom: 20px;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+
+    #chatBox {
+        width: 100%;
+        max-width: 600px;
+        height: 400px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 15px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        backdrop-filter: blur(5px);
+    }
+
+    #chatBox p {
+        margin: 8px 0;
+        padding: 8px 12px;
+        border-radius: 12px;
+        max-width: 80%;
+        word-wrap: break-word;
+    }
+
+    p.user {
+        background-color: rgba(255, 255, 255, 0.3);
+        color: #000;
+        align-self: flex-end;
+    }
+
+    p.assistant {
+        background-color: rgba(0, 0, 0, 0.3);
+        color: #fff;
+        align-self: flex-start;
+    }
+
+    #controls {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        max-width: 600px;
+    }
+
+    #userInput {
+        flex: 1;
+        padding: 10px 15px;
+        border-radius: 12px;
+        border: none;
+        outline: none;
+        font-size: 16px;
+    }
+
+    button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #ff6a00, #ee0979);
+        color: #fff;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+</style>
+</head>
+<body>
+
+<h2>$$ Personal Chatbot $$</h2>
+
+<div id="chatBox"></div>
+
+<div id="controls">
+    <input type="text" id="userInput" placeholder="Type your message..." />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="resetChat()">Reset</button>
+</div>
+
+<script>
+let sessionId = null;
+
+function renderChat(history) {
+    const chatBox = document.getElementById("chatBox");
+    chatBox.innerHTML = "";
+
+    history.forEach(msg => {
+        const p = document.createElement("p");
+        p.textContent = msg.content;
+        p.className = msg.role;
+        chatBox.appendChild(p);
+    });
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function sendMessage() {
+    const input = document.getElementById("userInput");
+    const message = input.value;
+    if (!message) return;
+
+    try {
+        const response = await fetch("http://127.0.0.1:8000/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, session_id: sessionId })
+        });
+
+        const data = await response.json();
+        sessionId = data.session_id;
+        renderChat(data.history);
+        input.value = "";
+        input.focus();
+    } catch (err) {
+        console.error("Error:", err);
+    }
+}
+
+async function resetChat() {
+    if (!sessionId) return;
+    try {
+        await fetch("http://127.0.0.1:8000/reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: "", session_id: sessionId })
+        });
+        document.getElementById("chatBox").innerHTML = "";
+        sessionId = null;
+        document.getElementById("userInput").focus();
+    } catch (err) {
+        console.error("Error:", err);
+    }
+}
+
+// Enter key sends message
+document.getElementById("userInput").addEventListener("keypress", function(e){
+    if (e.key === "Enter") sendMessage();
+});
+</script>
+
+</body>
+</html>
