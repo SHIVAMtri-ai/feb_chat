@@ -1,14 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict
 import uuid
 import os
 from dotenv import load_dotenv
-
-from fastapi.responses import HTMLResponse
 from pathlib import Path
-# ✅ Load env variables
+
+# Load env
 load_dotenv()
 HUGGING_FACE_API_KEY = os.getenv("HUGGING_FACE_API")
 
@@ -18,7 +19,6 @@ HUGGING_FACE_API_KEY = os.getenv("HUGGING_FACE_API")
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-# Hosted Meta LLaMA
 llm = HuggingFaceEndpoint(
     repo_id="meta-llama/Llama-3.2-1B-Instruct",
     task="text-generation",
@@ -41,39 +41,47 @@ app.add_middleware(
 )
 
 # -----------------------------
+# Serve Frontend Static Files
+# -----------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent
+frontend_path = BASE_DIR / "frontend"
+
+app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+
+@app.get("/")
+async def serve_index():
+    return FileResponse(frontend_path / "index.html")
+
+# -----------------------------
 # Session Memory
 # -----------------------------
 sessions: Dict[str, List[Dict]] = {}
 MAX_HISTORY_LENGTH = 20
 
-# -----------------------------
-# Request Schema
-# -----------------------------
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
 
-# -----------------------------
-# Trim history
-# -----------------------------
 def trim_history(history: List[Dict]):
-    if len(history) > MAX_HISTORY_LENGTH:
-        return history[-MAX_HISTORY_LENGTH:]
-    return history
+    return history[-MAX_HISTORY_LENGTH:]
 
-# -----------------------------
-# LLM Response using LangChain HuggingFace
-# -----------------------------
 def get_llm_response(messages: List[Dict]) -> str:
-    """
-    Convert conversation history to LangChain message format
-    and get LLM response
-    """
     chat_hist = []
 
-    # Add system message only once
-    if not messages or messages[0].get("role") != "system":
-        chat_hist.append(SystemMessage(content="You are a helpful AI assistant."))
+    chat_hist.append(SystemMessage(content="""
+You are a professional AI assistant.
+
+Follow these rules strictly:
+1. Give concise and clear answers.
+2. Structure responses using bullet points or short paragraphs.
+3. Provide logical reasoning when needed.
+4. Avoid unnecessary explanations.
+5. If the question is technical, explain step-by-step briefly.
+6. If unsure, say you are not certain instead of guessing.
+7. Keep tone professional and confident.
+
+Always prioritize clarity, reasoning, and structured output.
+"""))
 
     for msg in messages:
         if msg["role"] == "user":
@@ -81,13 +89,9 @@ def get_llm_response(messages: List[Dict]) -> str:
         elif msg["role"] == "assistant":
             chat_hist.append(AIMessage(content=msg["content"]))
 
-    # Call LLaMA
     result = model.invoke(chat_hist)
     return result.content
 
-# -----------------------------
-# Chat Endpoint
-# -----------------------------
 @app.post("/chat")
 async def chat(request: ChatRequest):
     session_id = request.session_id or str(uuid.uuid4())
@@ -97,14 +101,11 @@ async def chat(request: ChatRequest):
 
     history = sessions[session_id]
 
-    # Append user message
     history.append({"role": "user", "content": request.message})
     history = trim_history(history)
 
-    # Get LLM response
     response_text = get_llm_response(history)
 
-    # Append assistant response
     history.append({"role": "assistant", "content": response_text})
     sessions[session_id] = history
 
@@ -114,18 +115,9 @@ async def chat(request: ChatRequest):
         "session_id": session_id
     }
 
-# -----------------------------
-# Reset Endpoint
-# -----------------------------
 @app.post("/reset")
 async def reset(request: ChatRequest):
     if request.session_id and request.session_id in sessions:
         sessions[request.session_id] = []
 
     return {"message": "Conversation reset successfully."}
-
-
-@app.get("/", response_class=HTMLResponse)
-async def get_frontend():
-    html_path = Path(__file__).parent.parent / "frontend" / "index.html"
-    return html_path.read_text()
