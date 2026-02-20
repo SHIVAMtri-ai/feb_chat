@@ -2,3 +2,6 @@ fastapi
 uvicorn
 pydantic
 python-dotenv
+langchain
+langchain-huggingface
+huggingface-hub
